@@ -5,7 +5,7 @@
 #include <Windows.h>
 #include <process.h>
 
-#define NUM_NODE 200000
+#define NUM_NODE 500000
 #define NUM_WORKER 10
 
 using NodeData = int;
@@ -27,22 +27,21 @@ private:
     Node* _Top;
 };
 
-Node* g_Nodes1 = nullptr;
+Node* g_Nodes1[NUM_NODE];
 LockFreeStack g_Stack;
 
 unsigned int WorkerThread1(void* pvParam)
 {
     while (true)
     {
-        for (int iCnt = 0; iCnt < NUM_NODE; ++iCnt)
-        {
-            g_Stack.Push(&g_Nodes1[iCnt]);
-        }
-		for (int iCnt = 0; iCnt < NUM_NODE; ++iCnt)
-		{
-			g_Stack.Pop();
-		}
+		Node* top = g_Stack.Pop();
+        if (top == nullptr)
+            break;
+        delete top;
     }
+
+    __debugbreak();
+    return 0;
 }
 
 unsigned int WorkerThread2(void* pvParam)
@@ -52,20 +51,39 @@ unsigned int WorkerThread2(void* pvParam)
 		Node* topNode = g_Stack.Pop();
         g_Stack.Push(topNode);
 	}
+
+    return 0;
 }
 
 int main()
 {
-    g_Nodes1 = new Node[NUM_NODE];
     HANDLE workerThreads[NUM_WORKER] = { 0, };
 
     for (int iCnt = 0; iCnt < NUM_NODE; ++iCnt)
     {
-        g_Nodes1[iCnt].data = iCnt;
-        g_Stack.Push(&g_Nodes1[iCnt]);
+        g_Nodes1[iCnt] = new Node();
+        g_Nodes1[iCnt]->data = iCnt;
+        g_Stack.Push(g_Nodes1[iCnt]);
     }
     
+#pragma region Test Worker1
     for (int iCnt = 0; iCnt < NUM_WORKER; ++iCnt)
+    {
+        workerThreads[iCnt] = (HANDLE)_beginthreadex(NULL, 0, WorkerThread1, NULL, CREATE_SUSPENDED, NULL);
+        if (workerThreads[iCnt] == 0)
+        {
+               wprintf(L"Failed to operate _beginthreadex.\n");
+            __debugbreak();
+        }
+    }
+	for (int iCnt = 0; iCnt < NUM_WORKER; ++iCnt)
+	{
+        ::ResumeThread(workerThreads[iCnt]);
+	}
+#pragma endregion
+
+#pragma region Test Worker2
+    /*for (int iCnt = 0; iCnt < NUM_WORKER; ++iCnt)
     {
         workerThreads[iCnt] = (HANDLE)_beginthreadex(NULL, 0, WorkerThread2, NULL, 0, NULL);
         if (workerThreads[iCnt] == 0)
@@ -73,8 +91,8 @@ int main()
             wprintf(L"Failed to operate _beginthreadex.\n");
             __debugbreak();
         }
-    }
-
+    }*/
+#pragma endregion
     ::WaitForMultipleObjects(NUM_WORKER, workerThreads, TRUE, INFINITE);
 }
 
@@ -102,13 +120,15 @@ Node* LockFreeStack::Pop()
         t = _Top;
 		if (t == nullptr)
 			return nullptr;
-        newTop = t->next;
+
+        newTop = t->next; // 다른 thread가 t를 delete 했다면 문제 발생
     } while ((Node*)_InterlockedCompareExchange64((long long*)&_Top, (long long)newTop, (long long)t)
         != t);
 
     /** t가 꺼내진 상황이므로 Pop 수행 후 아래의 조건문을 수행하는 사이에 다른 thread에 의해 t의 데이터가 바뀔 일은 없다. */
     if (newTop != t->next)
     {
+        // ABA
         __debugbreak();
     }
 
