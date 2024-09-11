@@ -5,7 +5,7 @@
 #include <Windows.h>
 #include <process.h>
 
-#define NUM_NODE 1000000
+#define NUM_NODE 10000000
 #define NUM_WORKER 6
 
 using NodeData = int;
@@ -118,11 +118,13 @@ Node* LockFreeStack::Pop()
 		if (t == nullptr)
 			return nullptr;
 
-        newTop = t->next; // 다른 thread가 t를 delete 했다면 문제 발생
+        newTop = t->next;
     } while ((Node*)_InterlockedCompareExchange64((long long*)&_Top, (long long)newTop, (long long)t)
         != t);
 
-    /** t가 꺼내어진 상황이므로 Pop 수행 후 아래의 조건문을 수행하는 사이에 다른 thread에 의해 t의 데이터가 바뀔 일은 없다. */
+    // TODO: Memory logging
+
+    /** t가 현재 thread에 의해 꺼내어진 상황이므로 Pop 수행 후 아래의 조건문을 수행하는 사이에 다른 thread에 의해 t의 데이터가 바뀔 일은 없다. */
     if (newTop != t->next)
     {
         // ABA
