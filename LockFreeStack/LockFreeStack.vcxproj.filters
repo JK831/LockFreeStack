@@ -7,6 +7,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="LockFreeStack.cpp" />
+    <ClCompile Include="Test.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="LockFreeStack.h" />
   </ItemGroup>
 </Project>
