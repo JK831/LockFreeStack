@@ -7,38 +7,37 @@
 #define NUM_LOG 1000000
 #define NUM_PREPUSH 20000000
 #define NUM_PUSHPOP 10
-#define NUM_WORKER 10
+#define NUM_WORKER 16
 
 LockFreeStack<int> g_Stack;
-std::vector<std::vector<LoggingStruct*>> g_Log;
+std::vector<LoggingStruct> g_Log;
 unsigned long long g_Seq;
 
 unsigned int WorkerThread1(void* pvParam)
 {
     int threadID = (int)pvParam;
     int pushData = 0;
-    g_Log[threadID].reserve(NUM_LOG);
 
     while (true)
     {
         for (int iCnt = 0; iCnt < NUM_PUSHPOP; ++iCnt)
         {
-            LoggingStruct* loggingStruct = new LoggingStruct();
+            /*LoggingStruct* loggingStruct = new LoggingStruct();
 
             g_Stack.LoggingPush(pushData++, threadID, loggingStruct);
             
             loggingStruct->Seq = _InterlockedIncrement(&g_Seq);
-            g_Log[threadID].push_back(loggingStruct);
+            g_Log[threadID].push_back(loggingStruct);*/
         }
 
 		for (int iCnt = 0; iCnt < NUM_PUSHPOP; ++iCnt)
 		{
-			LoggingStruct* loggingStruct = new LoggingStruct();
+			/*LoggingStruct* loggingStruct = new LoggingStruct();
 
 			g_Stack.LoggingPop(threadID, loggingStruct);
 
 			loggingStruct->Seq = _InterlockedIncrement(&g_Seq);
-			g_Log[threadID].push_back(loggingStruct);
+			g_Log[threadID].push_back(loggingStruct);*/
 		}
     }
     
@@ -49,16 +48,13 @@ unsigned int WorkerThread1(void* pvParam)
 unsigned int WorkerThread2(void* pvParam)
 {
     int threadID = (int)pvParam;
-    g_Log[threadID].reserve(NUM_LOG);
+    
     while (true)
     {
-        LoggingStruct* loggingStruct = new LoggingStruct();
-        g_Log[threadID].push_back(loggingStruct);
-
-        g_Stack.LoggingPop(threadID, loggingStruct);
-
-		loggingStruct->Seq = _InterlockedIncrement(&g_Seq);
+        LoggingStruct loggingStruct = g_Stack.LoggingPop(threadID);
         
+        g_Log.push_back(loggingStruct);
+        //g_Stack.Pop();
     }
 
     return 0;
@@ -71,13 +67,13 @@ int main()
 
 #pragma region Test Worker1
     g_Log.reserve(NUM_WORKER);
+    g_Log.reserve(NUM_PREPUSH);
     for (int iCnt = 0; iCnt < NUM_PREPUSH; ++iCnt)
     {
         g_Stack.Push(iCnt);
     }
     for (int iCnt = 0; iCnt < NUM_WORKER; ++iCnt)
     {
-        g_Log.push_back(std::vector<LoggingStruct*>());
         workerThreads[iCnt] = (HANDLE)_beginthreadex(NULL, 0, WorkerThread2, (void*)iCnt, CREATE_SUSPENDED, NULL);
         if (workerThreads[iCnt] == 0)
         {

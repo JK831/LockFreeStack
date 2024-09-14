@@ -2,7 +2,6 @@
 
 struct LoggingStruct
 {
-	unsigned long long Seq;
 	unsigned long long PushPopValue;
 	unsigned long long PushNode;
 	unsigned long long PopNode;
@@ -23,8 +22,8 @@ public:
 	void Push(T InData);
 	T Pop();
 
-	void LoggingPush(T InData, int InThreadID, LoggingStruct* InLoggingStruct);
-	T LoggingPop(int InThreadID, LoggingStruct* InLoggingStruct);
+	LoggingStruct LoggingPush(T InData, int InThreadID);
+	LoggingStruct LoggingPop(int InThreadID);
 
 private:
 	LockFreeStackNode* _Top;
@@ -80,7 +79,7 @@ T LockFreeStack<T>::Pop()
 }
 
 template<typename T>
-inline void LockFreeStack<T>::LoggingPush(T InData, int InThreadID, LoggingStruct* InLoggingStruct)
+inline LoggingStruct LockFreeStack<T>::LoggingPush(T InData, int InThreadID)
 {
 	LockFreeStackNode* t;
 	LockFreeStackNode* newNode = new LockFreeStackNode();
@@ -91,14 +90,16 @@ inline void LockFreeStack<T>::LoggingPush(T InData, int InThreadID, LoggingStruc
 		newNode->next = t;
 	} while (_InterlockedCompareExchange64((long long*)&_Top, (long long)newNode, (long long)t) != (long long)t);
 
-	InLoggingStruct->PushPopValue = (unsigned long long)InData;
-	InLoggingStruct->PushNode = (unsigned long long)newNode;
-	InLoggingStruct->Top = (unsigned long long)t;
-	InLoggingStruct->ThreadID = (unsigned long long)InThreadID;
+	LoggingStruct loggingStruct;
+	loggingStruct.PushPopValue = (unsigned long long)InData;
+	loggingStruct.PushNode = (unsigned long long)newNode;
+	loggingStruct.Top = (unsigned long long)t;
+	loggingStruct.ThreadID = (unsigned long long)InThreadID;
+	return loggingStruct;
 }
 
 template<typename T>
-inline T LockFreeStack<T>::LoggingPop(int InThreadID, LoggingStruct* InLoggingStruct)
+inline LoggingStruct LockFreeStack<T>::LoggingPop(int InThreadID)
 {
 	LockFreeStackNode* t;
 	LockFreeStackNode* newTop;
@@ -115,12 +116,15 @@ inline T LockFreeStack<T>::LoggingPop(int InThreadID, LoggingStruct* InLoggingSt
 		!= t);
 
 	retData = t->data;
+
+	LoggingStruct loggingStruct;
+	loggingStruct.PopNode = (unsigned long long)t;
+
 	delete t;
 
-	InLoggingStruct->PushPopValue = (unsigned long long)retData;
-	InLoggingStruct->PopNode = (unsigned long long)t;
-	InLoggingStruct->Top = (unsigned long long)newTop;
-	InLoggingStruct->ThreadID = (unsigned long long)InThreadID;
+	loggingStruct.PushPopValue = (unsigned long long)retData;
+	loggingStruct.Top = (unsigned long long)newTop;
+	loggingStruct.ThreadID = (unsigned long long)InThreadID;
 
-	return retData;
+	return loggingStruct;
 }
