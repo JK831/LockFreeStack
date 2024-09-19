@@ -1,5 +1,14 @@
 #pragma once
 
+#include "../ObjectFreeList/ObjectFreeList.h"
+
+// TODO: NODEID
+#ifndef BIT_NODEID
+	#define BIT_NODEID 47
+#endif
+#define GET_LOCKFREENODEPTR(IDNode) ((LockFreeStackNode*)((unsigned long long)IDNode & 0x7FFFFFFFFFFF))
+#define GET_LOCKFREENODEIDPTR(NodePtr, ID) (LockFreeStackNode*)((unsigned long long)NodePtr | ID << BIT_NODEID)
+
 struct LoggingStruct
 {
 	unsigned long long PushPopValue;
@@ -27,10 +36,12 @@ public:
 
 private:
 	LockFreeStackNode* _Top;
+	long _NodeID;
+	ObjectFreeList<LockFreeStackNode> _OFL;
 };
 
 template <typename T>
-LockFreeStack<T>::LockFreeStack() : _Top(nullptr)
+LockFreeStack<T>::LockFreeStack() : _Top(nullptr), _NodeID(0), _OFL(false)
 {
 }
 
@@ -38,13 +49,14 @@ template <typename T>
 void LockFreeStack<T>::Push(T InData)
 {
 	LockFreeStackNode* t;
-	LockFreeStackNode* newNode = new LockFreeStackNode();
+	LockFreeStackNode* newNode = _OFL.Alloc();
 	newNode->data = InData;
 	do
 	{
 		t = _Top;
 		newNode->next = t;
-	} while (_InterlockedCompareExchange64((long long*)&_Top, (long long)newNode, (long long)t) != (long long)t);
+	} while (_InterlockedCompareExchange64((long long*)&_Top,
+		(long long)GET_LOCKFREENODEIDPTR(newNode, (LONG64)_InterlockedIncrement(&_NodeID)), (long long)t) != (long long)t);
 }
 
 template <typename T>
@@ -60,11 +72,11 @@ T LockFreeStack<T>::Pop()
 		if (t == nullptr)
 			throw e;
 
-		newTop = t->next;
+		newTop = GET_LOCKFREENODEPTR(t)->next;
 	} while ((LockFreeStackNode*)_InterlockedCompareExchange64((long long*)&_Top, (long long)newTop, (long long)t)
 		!= t);
 
-	retData = t->data;
+	retData = GET_LOCKFREENODEPTR(t)->data;
 
 	///** t가 현재 thread에 의해 꺼내어진 상황이므로 Pop 수행 후 아래의 조건문을 수행하는 사이에 다른 thread에 의해 t의 데이터가 바뀔 일은 없다. */
 	//if (newTop != t->next)
@@ -73,7 +85,7 @@ T LockFreeStack<T>::Pop()
 	//	__debugbreak();
 	//}
 
-	delete t;
+	_OFL.Free(GET_LOCKFREENODEPTR(t));
 
 	return retData;
 }
@@ -82,13 +94,14 @@ template<typename T>
 inline LoggingStruct LockFreeStack<T>::LoggingPush(T InData, int InThreadID)
 {
 	LockFreeStackNode* t;
-	LockFreeStackNode* newNode = new LockFreeStackNode();
+	LockFreeStackNode* newNode = _OFL.Alloc();
 	newNode->data = InData;
 	do
 	{
 		t = _Top;
 		newNode->next = t;
-	} while (_InterlockedCompareExchange64((long long*)&_Top, (long long)newNode, (long long)t) != (long long)t);
+	} while (_InterlockedCompareExchange64((long long*)&_Top, (long long)GET_LOCKFREENODEIDPTR(newNode,
+		_InterlockedIncrement(&_NodeID)), (long long)t) != (long long)t);
 
 	LoggingStruct loggingStruct;
 	loggingStruct.PushPopValue = (unsigned long long)InData;
@@ -111,16 +124,16 @@ inline LoggingStruct LockFreeStack<T>::LoggingPop(int InThreadID)
 		if (t == nullptr)
 			throw e;
 
-		newTop = t->next;
+		newTop = GET_LOCKFREENODEPTR(t)->next;
 	} while ((LockFreeStackNode*)_InterlockedCompareExchange64((long long*)&_Top, (long long)newTop, (long long)t)
 		!= t);
 
-	retData = t->data;
+	retData = GET_LOCKFREENODEPTR(t)->data;
 
 	LoggingStruct loggingStruct;
 	loggingStruct.PopNode = (unsigned long long)t;
 
-	delete t;
+	_OFL.Free(GET_LOCKFREENODEPTR(t));
 
 	loggingStruct.PushPopValue = (unsigned long long)retData;
 	loggingStruct.Top = (unsigned long long)newTop;
